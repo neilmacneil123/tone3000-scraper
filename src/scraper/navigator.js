@@ -1,8 +1,9 @@
 class Navigator {
-  constructor(page, logger, rateLimiter) {
+  constructor(page, logger, rateLimiter, config) {
     this.page = page;
     this.logger = logger;
     this.rateLimiter = rateLimiter;
+    this.config = config;
   }
 
   async detectTotalPages() {
@@ -41,16 +42,109 @@ class Navigator {
     }
   }
 
-  async extractItemUrls() {
+  async extractItemUrls(browser) {
     try {
-      // Load all items from all pages (URL-based pagination)
-      const urls = await this.loadAllItemsFromAllPages();
-      
-      this.logger.debug(`Extracted ${urls.length} total item URLs`);
-      return urls;
+      // Use parallel scanning if total pages is known
+      if (this.config.totalPages) {
+        this.logger.info(`Using parallel scanning for ${this.config.totalPages} pages with ${this.config.pageScanConcurrency} workers`);
+        const urls = await this.loadAllItemsParallel(browser);
+        this.logger.debug(`Extracted ${urls.length} total item URLs`);
+        return urls;
+      } else {
+        // Fall back to sequential scanning
+        this.logger.info('Using sequential page scanning (auto-detect mode)');
+        const urls = await this.loadAllItemsFromAllPages();
+        this.logger.debug(`Extracted ${urls.length} total item URLs`);
+        return urls;
+      }
       
     } catch (error) {
       this.logger.error('Failed to extract item URLs', { error: error.message });
+      return [];
+    }
+  }
+
+  async loadAllItemsParallel(browser) {
+    try {
+      const totalPages = this.config.totalPages;
+      const concurrency = this.config.pageScanConcurrency;
+      
+      this.logger.info(`Scanning ${totalPages} pages in parallel...`);
+      
+      const allUrls = new Set();
+      let pagesScanned = 0;
+      
+      // Create worker function
+      const scanPage = async (pageNum, workerPage) => {
+        try {
+          const pageUrl = pageNum === 1
+            ? this.config.baseUrl
+            : `${this.config.baseUrl}?page=${pageNum}`;
+          
+          await workerPage.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+          await this.rateLimiter.waitCustom(this.config.delays.betweenPages);
+          
+          const pageUrls = await workerPage.$$eval(
+            'a[href*="/tones/"]',
+            anchors => {
+              const urlSet = new Set();
+              anchors.forEach(a => {
+                const href = a.getAttribute('href');
+                if (href && href.includes('/tones/')) {
+                  const url = href.startsWith('http') ? href : `https://www.tone3000.com${href}`;
+                  urlSet.add(url);
+                }
+              });
+              return Array.from(urlSet);
+            }
+          );
+          
+          pagesScanned++;
+          if (pagesScanned % 10 === 0 || pagesScanned === totalPages) {
+            this.logger.info(`Progress: ${pagesScanned}/${totalPages} pages scanned (${allUrls.size} items found)`);
+          }
+          
+          return pageUrls;
+          
+        } catch (error) {
+          this.logger.warn(`Failed to scan page ${pageNum}:`, { error: error.message });
+          return [];
+        }
+      };
+      
+      // Create worker pool
+      const workers = [];
+      for (let i = 0; i < concurrency; i++) {
+        const workerPage = await browser.newPage();
+        await workerPage.setViewport({ width: 1920, height: 1080 });
+        workers.push(workerPage);
+      }
+      
+      // Process all pages with worker pool
+      const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
+      let currentIndex = 0;
+      
+      const processNext = async (workerPage) => {
+        while (currentIndex < pageNumbers.length) {
+          const pageNum = pageNumbers[currentIndex++];
+          const pageUrls = await scanPage(pageNum, workerPage);
+          pageUrls.forEach(url => allUrls.add(url));
+        }
+      };
+      
+      // Start all workers
+      await Promise.all(workers.map(worker => processNext(worker)));
+      
+      // Close worker pages
+      for (const worker of workers) {
+        await worker.close();
+      }
+      
+      this.logger.success(`Finished parallel scanning. Total unique items: ${allUrls.size}`);
+      return Array.from(allUrls);
+      
+    } catch (error) {
+      this.logger.error('Failed to load items in parallel', { error: error.message });
       return [];
     }
   }

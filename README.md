@@ -82,20 +82,27 @@ npm run dev
 ### How it works:
 
 1. The scraper navigates to the search page
-2. **Automatically iterates through all pages** (using URL pagination)
-   - Navigates through pages: ?page=1, ?page=2, ?page=3, etc.
-   - Extracts items from each page until no more pages found
-   - Typically processes 200+ pages with ~1600+ total items
-3. Collects all unique item URLs from all pages
-4. For each item:
+2. **Parallel page scanning** (OPTIMIZED - uses 10 workers)
+   - Scans 219 pages simultaneously with 10 browser tabs
+   - Extracts items from all pages in parallel
+   - **Completes in ~1-2 minutes** (vs. ~7-10 minutes sequential)
+   - Finds all ~5,000+ items across 219 pages
+3. Collects all unique item URLs
+4. **Concurrent downloads** (5 workers downloading simultaneously)
+   - Each worker processes items independently
+   - 5 items downloading at the same time
+5. For each item:
    - Visits the item detail page
    - Clicks the "Download All" button
    - Waits for download to complete
    - Saves file in organized folder structure
-5. Saves progress after each download
-6. Generates summary report at completion
+6. Saves progress after each download
+7. Generates summary report at completion
 
-**Note:** The initial page loading phase may take ~5-10 minutes to collect all items from 200+ pages. Progress will be logged as each page is processed.
+**Total Time Estimate:**
+- Phase 1 (URL collection): ~1-2 minutes with parallel scanning
+- Phase 2 (Downloads): ~2-3 hours with 5 concurrent workers
+- **Total: ~2-3 hours for all 5000+ items**
 
 ### File Structure:
 
@@ -132,13 +139,17 @@ Edit `src/config.js` to customize:
   // Download directory
   downloadDir: './downloads',
   
+  // Pagination settings
+  totalPages: 219,           // Total pages (set to null for auto-detect)
+  
   // Concurrency settings
-  concurrency: 5,            // Number of simultaneous downloads (1-10 recommended)
+  concurrency: 5,            // Simultaneous downloads (1-10 recommended)
+  pageScanConcurrency: 10,   // Simultaneous page scans (5-15 recommended)
   
   // Delays (in milliseconds)
   delays: {
-    betweenPages: 2000,      // 2 seconds
-    betweenItems: 500,       // 0.5 seconds (reduced for concurrent mode)
+    betweenPages: 1000,      // 1 second (for parallel scanning)
+    betweenItems: 500,       // 0.5 seconds
     afterDownload: 3000,     // 3 seconds
   },
   
@@ -153,19 +164,30 @@ Edit `src/config.js` to customize:
 }
 ```
 
-### Concurrency Settings
+### Performance Settings
 
-The scraper supports **concurrent downloads** for much faster processing:
+#### totalPages (NEW!)
+- **`totalPages: 219`** - Pre-configured for tone3000.com
+- Enables parallel page scanning (10x faster URL collection)
+- Set to `null` to auto-detect (slower but works if page count changes)
 
+#### Download Concurrency
 - **`concurrency: 5`** (default) - Downloads 5 items simultaneously
 - **Recommended range:** 3-10 concurrent downloads
 - **Impact on speed:**
-  - `concurrency: 1` → ~13-16 hours for 1600 items
+  - `concurrency: 1` → ~13-16 hours for 5000 items
   - `concurrency: 3` → ~4-5 hours
   - `concurrency: 5` → ~2.5-3 hours
   - `concurrency: 10` → ~1.5-2 hours
 
-**Note:** Higher concurrency uses more RAM (~100-200MB per worker) and may stress the server. 5 is a good balance.
+#### Page Scan Concurrency (NEW!)
+- **`pageScanConcurrency: 10`** (default) - Scans 10 pages simultaneously
+- Only used when `totalPages` is set
+- **Impact on URL collection:**
+  - Sequential (old): ~7-10 minutes for 219 pages
+  - Parallel with 10 workers: ~1-2 minutes
+
+**Note:** Higher concurrency uses more RAM (~100-200MB per worker). Default settings provide excellent performance.
 
 ## Resume Capability
 

@@ -89,7 +89,7 @@ class Tone3000Scraper {
     await this.page.setViewport({ width: 1920, height: 1080 });
 
     // Initialize navigator (uses main page for navigation)
-    this.navigator = new Navigator(this.page, this.logger, this.rateLimiter);
+    this.navigator = new Navigator(this.page, this.logger, this.rateLimiter, this.config);
 
     this.logger.success('Browser launched successfully');
     this.logger.info(`Concurrency: ${this.config.concurrency} simultaneous downloads`);
@@ -148,8 +148,8 @@ class Tone3000Scraper {
       this.logger.info('EXTRACTING ALL ITEMS (URL PAGINATION)');
       this.logger.info('='.repeat(60));
 
-      // Extract ALL item URLs from all pages
-      const itemUrls = await this.navigator.extractItemUrls();
+      // Extract ALL item URLs from all pages (with parallel scanning if configured)
+      const itemUrls = await this.navigator.extractItemUrls(this.browser);
       
       if (itemUrls.length === 0) {
         this.logger.warn('No items found');

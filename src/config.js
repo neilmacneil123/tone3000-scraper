@@ -5,12 +5,16 @@ export default {
   // Download settings
   downloadDir: './downloads',
   
+  // Pagination settings
+  totalPages: 219,           // Total number of pages (set to null for auto-detect)
+  
   // Concurrency settings
   concurrency: 5,            // Number of simultaneous downloads (1-10 recommended)
+  pageScanConcurrency: 10,   // Number of simultaneous page scans during URL collection
   
   // Rate limiting settings (in milliseconds)
   delays: {
-    betweenPages: 2000,      // 2 seconds between page navigations
+    betweenPages: 1000,      // 1 second between page navigations (for parallel scanning)
     betweenItems: 500,       // 0.5 seconds between item visits (reduced for concurrent)
     afterDownload: 3000,     // 3 seconds after download starts
   },
