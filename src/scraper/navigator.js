@@ -43,6 +43,9 @@ class Navigator {
 
   async extractItemUrls() {
     try {
+      // Scroll to load all items (infinite scroll)
+      await this.loadAllItems();
+      
       // Extract all item URLs from the current page
       const urls = await this.page.$$eval(
         'a[href*="/tones/"]',
@@ -67,6 +70,50 @@ class Navigator {
     } catch (error) {
       this.logger.error('Failed to extract item URLs', { error: error.message });
       return [];
+    }
+  }
+
+  async loadAllItems() {
+    try {
+      this.logger.info('Loading all items via infinite scroll...');
+      let previousCount = 0;
+      let currentCount = 0;
+      let noChangeCount = 0;
+      const maxAttempts = 5; // Stop after 5 consecutive scrolls with no new items
+
+      while (noChangeCount < maxAttempts) {
+        // Get current count of items
+        currentCount = await this.page.$$eval(
+          'a[href*="/tones/"]',
+          anchors => new Set(anchors.map(a => a.getAttribute('href'))).size
+        );
+
+        this.logger.debug(`Current items: ${currentCount}, Previous: ${previousCount}`);
+
+        // Scroll to bottom
+        await this.scrollToBottom();
+        
+        // Wait for potential new items to load
+        await this.rateLimiter.waitCustom(2000); // 2 seconds for content to load
+
+        // Check if new items loaded
+        if (currentCount === previousCount) {
+          noChangeCount++;
+          this.logger.debug(`No new items loaded (attempt ${noChangeCount}/${maxAttempts})`);
+        } else {
+          noChangeCount = 0;
+          this.logger.info(`Loaded ${currentCount - previousCount} new items (total: ${currentCount})`);
+        }
+
+        previousCount = currentCount;
+      }
+
+      this.logger.success(`Finished loading all items. Total: ${currentCount}`);
+      return currentCount;
+
+    } catch (error) {
+      this.logger.error('Failed to load all items', { error: error.message });
+      return 0;
     }
   }
 

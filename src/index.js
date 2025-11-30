@@ -99,100 +99,60 @@ class Tone3000Scraper {
     try {
       // Navigate to search page
       this.logger.info(`Navigating to ${this.config.baseUrl}`);
-      await this.page.goto(this.config.baseUrl, { 
+      await this.page.goto(this.config.baseUrl, {
         waitUntil: 'networkidle2',
-        timeout: this.config.browserTimeout 
+        timeout: this.config.browserTimeout
       });
 
-      // Detect total pages (or use large number for infinite scroll sites)
-      const totalPages = await this.navigator.detectTotalPages();
-      this.logger.info(`Total pages to process: ${totalPages === 999 ? 'Unknown (will continue until no items found)' : totalPages}`);
+      this.logger.info(`\n${'='.repeat(60)}`);
+      this.logger.info('EXTRACTING ALL ITEMS (INFINITE SCROLL)');
+      this.logger.info('='.repeat(60));
 
-      // Get starting page
-      const startPage = this.stateManager.getLastProcessedPage() + 1;
-      let currentPage = startPage;
-      let consecutiveEmptyPages = 0;
+      // Extract ALL item URLs from the page (with infinite scroll loading)
+      const itemUrls = await this.navigator.extractItemUrls();
+      
+      if (itemUrls.length === 0) {
+        this.logger.warn('No items found on the page');
+        return;
+      }
 
-      // Process each page
-      for (currentPage = startPage; currentPage <= totalPages; currentPage++) {
+      this.logger.success(`\nTotal items found: ${itemUrls.length}`);
+      this.logger.info(`\n${'='.repeat(60)}`);
+      this.logger.info('STARTING DOWNLOADS');
+      this.logger.info('='.repeat(60) + '\n');
+
+      // Process each item
+      for (let i = 0; i < itemUrls.length; i++) {
         if (this.isShuttingDown) break;
 
-        this.logger.info(`\n${'='.repeat(60)}`);
-        this.logger.info(`Processing page ${currentPage}/${totalPages === 999 ? '?' : totalPages}`);
-        this.logger.info('='.repeat(60));
+        const itemUrl = itemUrls[i];
 
-        // Navigate to the current page if not already there
-        if (currentPage > startPage) {
-          const hasMorePages = await this.navigator.navigateToNextPage(currentPage - 1);
-          if (!hasMorePages) {
-            this.logger.info('No more pages found');
-            break;
-          }
-        }
-
-        // Extract item URLs from current page
-        const itemUrls = await this.navigator.extractItemUrls();
-        
-        if (itemUrls.length === 0) {
-          consecutiveEmptyPages++;
-          this.logger.warn(`No items found on page ${currentPage}`);
-          
-          if (consecutiveEmptyPages >= 3) {
-            this.logger.info('Reached end of items (3 consecutive empty pages)');
-            break;
-          }
-          
-          await this.stateManager.updatePage(currentPage);
+        // Skip if already processed
+        if (this.stateManager.isItemProcessed(itemUrl)) {
+          this.logger.debug(`Skipping already processed item: ${itemUrl}`);
           continue;
         }
 
-        consecutiveEmptyPages = 0;
-        this.logger.info(`Found ${itemUrls.length} items on page ${currentPage}`);
+        // Progress indicator
+        this.logger.progress(i + 1, itemUrls.length, itemUrl);
 
-        // Process each item
-        for (let i = 0; i < itemUrls.length; i++) {
-          if (this.isShuttingDown) break;
+        // Scrape the item
+        const result = await this.itemScraper.scrapeItem(itemUrl);
 
-          const itemUrl = itemUrls[i];
-
-          // Skip if already processed
-          if (this.stateManager.isItemProcessed(itemUrl)) {
-            this.logger.debug(`Skipping already processed item: ${itemUrl}`);
-            continue;
-          }
-
-          // Progress indicator
-          const totalProcessed = this.stateManager.getStats().successfulDownloads + 
-                                this.stateManager.getStats().failedDownloads +
-                                this.stateManager.getStats().skippedItems;
-          this.logger.progress(i + 1, itemUrls.length, itemUrl);
-
-          // Scrape the item
-          const result = await this.itemScraper.scrapeItem(itemUrl);
-
-          // Update state
-          if (result.success) {
-            await this.stateManager.markItemProcessed(itemUrl, true);
+        // Update state
+        if (result.success) {
+          await this.stateManager.markItemProcessed(itemUrl, true);
+        } else {
+          if (result.reason === 'No download button found') {
+            await this.stateManager.markSkipped(itemUrl);
           } else {
-            if (result.reason === 'No download button found') {
-              await this.stateManager.markSkipped(itemUrl);
-            } else {
-              await this.stateManager.markItemProcessed(itemUrl, false);
-            }
-          }
-
-          // Rate limiting between items
-          if (i < itemUrls.length - 1) {
-            await this.rateLimiter.waitBetweenItems();
+            await this.stateManager.markItemProcessed(itemUrl, false);
           }
         }
 
-        // Update page progress
-        await this.stateManager.updatePage(currentPage);
-        
-        // Rate limiting between pages
-        if (currentPage < totalPages) {
-          await this.rateLimiter.waitBetweenPages();
+        // Rate limiting between items
+        if (i < itemUrls.length - 1) {
+          await this.rateLimiter.waitBetweenItems();
         }
       }
 
