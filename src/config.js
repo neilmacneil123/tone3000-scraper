@@ -5,10 +5,13 @@ export default {
   // Download settings
   downloadDir: './downloads',
   
+  // Concurrency settings
+  concurrency: 5,            // Number of simultaneous downloads (1-10 recommended)
+  
   // Rate limiting settings (in milliseconds)
   delays: {
     betweenPages: 2000,      // 2 seconds between page navigations
-    betweenItems: 2500,      // 2.5 seconds between item visits
+    betweenItems: 500,       // 0.5 seconds between item visits (reduced for concurrent)
     afterDownload: 3000,     // 3 seconds after download starts
   },
   

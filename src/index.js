@@ -88,11 +88,51 @@ class Tone3000Scraper {
     // Set viewport
     await this.page.setViewport({ width: 1920, height: 1080 });
 
-    // Initialize navigator and scraper
+    // Initialize navigator (uses main page for navigation)
     this.navigator = new Navigator(this.page, this.logger, this.rateLimiter);
-    this.itemScraper = new ItemScraper(this.page, this.logger, this.rateLimiter, this.config);
 
     this.logger.success('Browser launched successfully');
+    this.logger.info(`Concurrency: ${this.config.concurrency} simultaneous downloads`);
+  }
+
+  async createWorkerPage() {
+    const page = await this.browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
+    return page;
+  }
+
+  async processItem(itemUrl, workerPage, workerId) {
+    try {
+      // Skip if already processed
+      if (this.stateManager.isItemProcessed(itemUrl)) {
+        this.logger.debug(`[Worker ${workerId}] Skipping already processed: ${itemUrl}`);
+        return { skipped: true };
+      }
+
+      // Create item scraper for this worker
+      const itemScraper = new ItemScraper(workerPage, this.logger, this.rateLimiter, this.config);
+
+      // Scrape the item
+      const result = await itemScraper.scrapeItem(itemUrl);
+
+      // Update state
+      if (result.success) {
+        await this.stateManager.markItemProcessed(itemUrl, true);
+      } else {
+        if (result.reason === 'No download button found') {
+          await this.stateManager.markSkipped(itemUrl);
+        } else {
+          await this.stateManager.markItemProcessed(itemUrl, false);
+        }
+      }
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`[Worker ${workerId}] Error processing ${itemUrl}`, { error: error.message });
+      await this.stateManager.markItemProcessed(itemUrl, false);
+      return { success: false, error: error.message };
+    }
   }
 
   async scrapeAllPages() {
@@ -105,55 +145,78 @@ class Tone3000Scraper {
       });
 
       this.logger.info(`\n${'='.repeat(60)}`);
-      this.logger.info('EXTRACTING ALL ITEMS (INFINITE SCROLL)');
+      this.logger.info('EXTRACTING ALL ITEMS (URL PAGINATION)');
       this.logger.info('='.repeat(60));
 
-      // Extract ALL item URLs from the page (with infinite scroll loading)
+      // Extract ALL item URLs from all pages
       const itemUrls = await this.navigator.extractItemUrls();
       
       if (itemUrls.length === 0) {
-        this.logger.warn('No items found on the page');
+        this.logger.warn('No items found');
         return;
       }
 
       this.logger.success(`\nTotal items found: ${itemUrls.length}`);
       this.logger.info(`\n${'='.repeat(60)}`);
-      this.logger.info('STARTING DOWNLOADS');
+      this.logger.info(`STARTING DOWNLOADS (${this.config.concurrency} concurrent)`);
       this.logger.info('='.repeat(60) + '\n');
 
-      // Process each item
-      for (let i = 0; i < itemUrls.length; i++) {
-        if (this.isShuttingDown) break;
+      // Filter out already processed items
+      const pendingUrls = itemUrls.filter(url => !this.stateManager.isItemProcessed(url));
+      const alreadyProcessed = itemUrls.length - pendingUrls.length;
+      
+      if (alreadyProcessed > 0) {
+        this.logger.info(`Skipping ${alreadyProcessed} already processed items`);
+      }
 
-        const itemUrl = itemUrls[i];
+      if (pendingUrls.length === 0) {
+        this.logger.success('All items already processed!');
+        return;
+      }
 
-        // Skip if already processed
-        if (this.stateManager.isItemProcessed(itemUrl)) {
-          this.logger.debug(`Skipping already processed item: ${itemUrl}`);
-          continue;
-        }
+      this.logger.info(`Processing ${pendingUrls.length} pending items\n`);
 
-        // Progress indicator
-        this.logger.progress(i + 1, itemUrls.length, itemUrl);
+      // Create worker pool
+      const workers = [];
+      for (let i = 0; i < this.config.concurrency; i++) {
+        const workerPage = await this.createWorkerPage();
+        workers.push({ id: i + 1, page: workerPage, busy: false });
+      }
 
-        // Scrape the item
-        const result = await this.itemScraper.scrapeItem(itemUrl);
+      // Process queue
+      let currentIndex = 0;
+      let completed = 0;
+      const total = pendingUrls.length;
 
-        // Update state
-        if (result.success) {
-          await this.stateManager.markItemProcessed(itemUrl, true);
-        } else {
-          if (result.reason === 'No download button found') {
-            await this.stateManager.markSkipped(itemUrl);
-          } else {
-            await this.stateManager.markItemProcessed(itemUrl, false);
-          }
-        }
-
-        // Rate limiting between items
-        if (i < itemUrls.length - 1) {
+      const processNext = async (worker) => {
+        while (currentIndex < pendingUrls.length && !this.isShuttingDown) {
+          const index = currentIndex++;
+          const itemUrl = pendingUrls[index];
+          
+          worker.busy = true;
+          
+          // Progress update
+          this.logger.progress(completed + 1, total, `[Worker ${worker.id}] ${itemUrl}`);
+          
+          await this.processItem(itemUrl, worker.page, worker.id);
+          
+          completed++;
+          worker.busy = false;
+          
+          // Small delay between items
           await this.rateLimiter.waitBetweenItems();
         }
+      };
+
+      // Start all workers
+      const workerPromises = workers.map(worker => processNext(worker));
+      
+      // Wait for all workers to complete
+      await Promise.all(workerPromises);
+
+      // Close worker pages
+      for (const worker of workers) {
+        await worker.page.close();
       }
 
       this.logger.success('\n✅ Scraping completed!');

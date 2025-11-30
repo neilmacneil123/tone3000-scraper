@@ -132,10 +132,13 @@ Edit `src/config.js` to customize:
   // Download directory
   downloadDir: './downloads',
   
+  // Concurrency settings
+  concurrency: 5,            // Number of simultaneous downloads (1-10 recommended)
+  
   // Delays (in milliseconds)
   delays: {
     betweenPages: 2000,      // 2 seconds
-    betweenItems: 2500,      // 2.5 seconds
+    betweenItems: 500,       // 0.5 seconds (reduced for concurrent mode)
     afterDownload: 3000,     // 3 seconds
   },
   
@@ -149,6 +152,20 @@ Edit `src/config.js` to customize:
   // Other settings...
 }
 ```
+
+### Concurrency Settings
+
+The scraper supports **concurrent downloads** for much faster processing:
+
+- **`concurrency: 5`** (default) - Downloads 5 items simultaneously
+- **Recommended range:** 3-10 concurrent downloads
+- **Impact on speed:**
+  - `concurrency: 1` → ~13-16 hours for 1600 items
+  - `concurrency: 3` → ~4-5 hours
+  - `concurrency: 5` → ~2.5-3 hours
+  - `concurrency: 10` → ~1.5-2 hours
+
+**Note:** Higher concurrency uses more RAM (~100-200MB per worker) and may stress the server. 5 is a good balance.
 
 ## Resume Capability
 
