@@ -43,28 +43,10 @@ class Navigator {
 
   async extractItemUrls() {
     try {
-      // Scroll to load all items (infinite scroll)
-      await this.loadAllItems();
+      // Load all items from all pages (URL-based pagination)
+      const urls = await this.loadAllItemsFromAllPages();
       
-      // Extract all item URLs from the current page
-      const urls = await this.page.$$eval(
-        'a[href*="/tones/"]',
-        anchors => {
-          // Get unique URLs
-          const urlSet = new Set();
-          anchors.forEach(a => {
-            const href = a.getAttribute('href');
-            if (href && href.includes('/tones/')) {
-              // Convert relative URLs to absolute
-              const url = href.startsWith('http') ? href : `https://www.tone3000.com${href}`;
-              urlSet.add(url);
-            }
-          });
-          return Array.from(urlSet);
-        }
-      );
-
-      this.logger.debug(`Extracted ${urls.length} item URLs from current page`);
+      this.logger.debug(`Extracted ${urls.length} total item URLs`);
       return urls;
       
     } catch (error) {
@@ -73,47 +55,71 @@ class Navigator {
     }
   }
 
-  async loadAllItems() {
+  async loadAllItemsFromAllPages() {
     try {
-      this.logger.info('Loading all items via infinite scroll...');
-      let previousCount = 0;
-      let currentCount = 0;
-      let noChangeCount = 0;
-      const maxAttempts = 5; // Stop after 5 consecutive scrolls with no new items
+      this.logger.info('Loading items from all pages via URL pagination...');
+      
+      const allUrls = new Set();
+      let currentPage = 1;
+      let consecutiveEmptyPages = 0;
+      const maxEmptyPages = 3;
 
-      while (noChangeCount < maxAttempts) {
-        // Get current count of items
-        currentCount = await this.page.$$eval(
-          'a[href*="/tones/"]',
-          anchors => new Set(anchors.map(a => a.getAttribute('href'))).size
-        );
-
-        this.logger.debug(`Current items: ${currentCount}, Previous: ${previousCount}`);
-
-        // Scroll to bottom
-        await this.scrollToBottom();
+      while (consecutiveEmptyPages < maxEmptyPages) {
+        // Navigate to page
+        const pageUrl = currentPage === 1
+          ? this.page.url()
+          : `${this.page.url().split('?')[0]}?page=${currentPage}`;
         
-        // Wait for potential new items to load
-        await this.rateLimiter.waitCustom(2000); // 2 seconds for content to load
-
-        // Check if new items loaded
-        if (currentCount === previousCount) {
-          noChangeCount++;
-          this.logger.debug(`No new items loaded (attempt ${noChangeCount}/${maxAttempts})`);
-        } else {
-          noChangeCount = 0;
-          this.logger.info(`Loaded ${currentCount - previousCount} new items (total: ${currentCount})`);
+        if (currentPage > 1) {
+          this.logger.debug(`Navigating to page ${currentPage}: ${pageUrl}`);
+          await this.page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+          await this.rateLimiter.waitCustom(1000);
         }
 
-        previousCount = currentCount;
+        // Extract items from current page
+        const pageUrls = await this.page.$$eval(
+          'a[href*="/tones/"]',
+          anchors => {
+            const urlSet = new Set();
+            anchors.forEach(a => {
+              const href = a.getAttribute('href');
+              if (href && href.includes('/tones/')) {
+                const url = href.startsWith('http') ? href : `https://www.tone3000.com${href}`;
+                urlSet.add(url);
+              }
+            });
+            return Array.from(urlSet);
+          }
+        );
+
+        if (pageUrls.length === 0) {
+          consecutiveEmptyPages++;
+          this.logger.debug(`No items on page ${currentPage} (${consecutiveEmptyPages}/${maxEmptyPages} empty)`);
+        } else {
+          consecutiveEmptyPages = 0;
+          
+          // Add new URLs
+          const newUrlCount = pageUrls.filter(url => !allUrls.has(url)).length;
+          pageUrls.forEach(url => allUrls.add(url));
+          
+          this.logger.info(`Page ${currentPage}: ${pageUrls.length} items (${newUrlCount} new, total: ${allUrls.size})`);
+        }
+
+        currentPage++;
+        
+        // Safety limit to prevent infinite loops
+        if (currentPage > 300) {
+          this.logger.warn('Reached safety limit of 300 pages');
+          break;
+        }
       }
 
-      this.logger.success(`Finished loading all items. Total: ${currentCount}`);
-      return currentCount;
+      this.logger.success(`Finished loading all pages. Total unique items: ${allUrls.size}`);
+      return Array.from(allUrls);
 
     } catch (error) {
-      this.logger.error('Failed to load all items', { error: error.message });
-      return 0;
+      this.logger.error('Failed to load all items from pages', { error: error.message });
+      return [];
     }
   }
 

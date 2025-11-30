@@ -82,10 +82,11 @@ npm run dev
 ### How it works:
 
 1. The scraper navigates to the search page
-2. **Automatically scrolls to load all items** (the site uses infinite scroll)
-   - Scrolls to bottom repeatedly until no new items load
-   - Typically loads all ~1600+ items in a few minutes
-3. Extracts all item URLs from the loaded page
+2. **Automatically iterates through all pages** (using URL pagination)
+   - Navigates through pages: ?page=1, ?page=2, ?page=3, etc.
+   - Extracts items from each page until no more pages found
+   - Typically processes 200+ pages with ~1600+ total items
+3. Collects all unique item URLs from all pages
 4. For each item:
    - Visits the item detail page
    - Clicks the "Download All" button
@@ -94,7 +95,7 @@ npm run dev
 5. Saves progress after each download
 6. Generates summary report at completion
 
-**Note:** The initial loading phase may take several minutes as it scrolls through all items. Progress will be logged during this process.
+**Note:** The initial page loading phase may take ~5-10 minutes to collect all items from 200+ pages. Progress will be logged as each page is processed.
 
 ### File Structure:
 
