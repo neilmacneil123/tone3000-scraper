@@ -18,10 +18,48 @@ A robust Node.js-based web scraper for downloading all .zip files from [tone3000
 - Node.js v16 or higher
 - npm or yarn
 
+**Note:** You do NOT need Chrome or Chromium installed! Puppeteer automatically downloads and bundles its own version of Chromium during installation (~170-300MB).
+
+### Linux Users (Ubuntu/Debian)
+
+If you're on Ubuntu/Debian Linux, you need to install Chrome's dependencies first:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  libnss3 \
+  libnspr4 \
+  libatk1.0-0 \
+  libatk-bridge2.0-0 \
+  libcups2 \
+  libdrm2 \
+  libxkbcommon0 \
+  libxcomposite1 \
+  libxdamage1 \
+  libxfixes3 \
+  libxrandr2 \
+  libgbm1 \
+  libasound2
+```
+
+**For other Linux distributions:**
+```bash
+# Fedora/RHEL
+sudo yum install -y nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon libXcomposite libXdamage libXrandr mesa-libgbm alsa-lib
+
+# Arch Linux
+sudo pacman -S nss nspr atk at-spi2-atk cups libdrm libxkbcommon libxcomposite libxdamage libxrandr mesa alsa-lib
+```
+
+### Windows/macOS Users
+
+No additional dependencies needed - just Node.js!
+
 ## Installation
 
 1. Clone or download this repository
-2. Install dependencies:
+2. **(Linux only)** Install system dependencies using the commands above
+3. Install npm dependencies:
 
 ```bash
 npm install
