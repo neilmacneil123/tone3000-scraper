@@ -1,0 +1,32 @@
+export default {
+  // Base URL for scraping
+  baseUrl: 'https://www.tone3000.com/search',
+  
+  // Download settings
+  downloadDir: './downloads',
+  
+  // Rate limiting settings (in milliseconds)
+  delays: {
+    betweenPages: 2000,      // 2 seconds between page navigations
+    betweenItems: 2500,      // 2.5 seconds between item visits
+    afterDownload: 3000,     // 3 seconds after download starts
+  },
+  
+  // Retry settings
+  maxRetries: 3,
+  retryDelay: 5000,          // 5 seconds before retry
+  
+  // Browser settings
+  headless: true,            // Set to false to see the browser
+  browserTimeout: 60000,     // 60 seconds
+  
+  // Progress tracking
+  stateFile: './progress.json',
+  
+  // Logging settings
+  logDir: './logs',
+  logLevel: 'info',          // 'debug', 'info', 'warn', 'error'
+  
+  // Download timeout
+  downloadTimeout: 300000,   // 5 minutes for large files
+};

@@ -1,0 +1,196 @@
+# Tone3000 Web Scraper
+
+A robust Node.js-based web scraper for downloading all .zip files from [tone3000.com/search](https://www.tone3000.com/search).
+
+## Features
+
+✅ **Automated Pagination** - Automatically navigates through all 200+ pages  
+✅ **Resume Capability** - Can resume from where it left off if interrupted  
+✅ **Rate Limiting** - Respectful scraping with configurable delays (2-3 seconds)  
+✅ **Organized Downloads** - Files saved in folders named after each item  
+✅ **Error Handling** - Automatic retry logic for failed downloads (3 attempts)  
+✅ **Progress Tracking** - Real-time progress updates and statistics  
+✅ **Graceful Shutdown** - Save progress on interruption (Ctrl+C)  
+✅ **Comprehensive Logging** - Detailed logs saved to files for debugging  
+
+## Prerequisites
+
+- Node.js v16 or higher
+- npm or yarn
+
+## Installation
+
+1. Clone or download this repository
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+## Usage
+
+### Start the scraper:
+
+```bash
+npm start
+```
+
+### Watch mode (auto-restart on file changes):
+
+```bash
+npm run dev
+```
+
+### How it works:
+
+1. The scraper starts from the search page
+2. Detects total number of pages (or continues until no more items found)
+3. Iterates through each page:
+   - Extracts all item URLs
+   - Visits each item detail page
+   - Clicks the "Download All" button
+   - Waits for download to complete
+   - Saves file in organized folder structure
+4. Saves progress after each item/page
+5. Generates summary report at completion
+
+### File Structure:
+
+```
+scrapper/
+├── downloads/              # Downloaded files (organized by item name)
+│   ├── Item-Name-1/
+│   │   └── downloads.zip
+│   ├── Item-Name-2/
+│   │   └── downloads.zip
+│   └── ...
+├── logs/                   # Log files
+│   └── scraper-*.log
+├── progress.json          # State file for resume capability
+├── src/
+│   ├── index.js          # Main entry point
+│   ├── config.js         # Configuration settings
+│   ├── scraper/
+│   │   ├── navigator.js  # Page navigation logic
+│   │   └── itemScraper.js # Item scraping logic
+│   └── utils/
+│       ├── logger.js     # Logging system
+│       ├── stateManager.js # Progress tracking
+│       └── rateLimiter.js  # Rate limiting
+└── package.json
+```
+
+## Configuration
+
+Edit `src/config.js` to customize:
+
+```javascript
+{
+  // Download directory
+  downloadDir: './downloads',
+  
+  // Delays (in milliseconds)
+  delays: {
+    betweenPages: 2000,      // 2 seconds
+    betweenItems: 2500,      // 2.5 seconds
+    afterDownload: 3000,     // 3 seconds
+  },
+  
+  // Retry settings
+  maxRetries: 3,
+  retryDelay: 5000,
+  
+  // Browser settings
+  headless: true,            // Set to false to see the browser
+  
+  // Other settings...
+}
+```
+
+## Resume Capability
+
+If the scraper is interrupted (Ctrl+C, crash, etc.), it automatically saves progress to `progress.json`. When you restart:
+
+```bash
+npm start
+```
+
+It will automatically resume from where it left off, skipping already downloaded items.
+
+### Reset Progress:
+
+To start fresh, delete the `progress.json` file:
+
+```bash
+rm progress.json
+```
+
+## Monitoring Progress
+
+The scraper provides real-time updates:
+
+- Current page being processed
+- Items per page
+- Download success/failure
+- Overall statistics
+
+Example output:
+```
+[2024-01-01T12:00:00.000Z] [INFO] Processing page 5/200
+[2024-01-01T12:00:02.000Z] [INFO] Found 10 items on page 5
+Progress: 3/10 (30.0%) - https://www.tone3000.com/tones/item-name
+[2024-01-01T12:00:05.000Z] [SUCCESS] Successfully downloaded: Item-Name/downloads.zip
+```
+
+## Troubleshooting
+
+### Download not starting:
+
+1. Check if "Download All" button exists on the page
+2. Try setting `headless: false` in config to watch the browser
+3. Check logs for specific error messages
+
+### Scraper stuck:
+
+1. Stop with Ctrl+C (progress will be saved)
+2. Check `logs/` directory for errors
+3. Delete `progress.json` to start fresh if needed
+
+### Downloads incomplete:
+
+- Failed downloads are tracked in `progress.json`
+- Check the summary report for failed items
+- Retry logic attempts downloads 3 times automatically
+
+## Output
+
+After completion, you'll see a summary:
+
+```
+============================================================
+📊 SCRAPING SUMMARY
+============================================================
+✅ Successful downloads: 1580
+❌ Failed downloads: 12
+⏭️  Skipped items: 8
+📄 Total processed: 1600
+⏱️  Duration: 245 minutes
+💾 Download location: ./downloads
+📝 Log file: ./logs/scraper-2024-01-01.log
+============================================================
+```
+
+## Notes
+
+- The scraper respects rate limits to avoid overwhelming the server
+- Progress is saved after each item, so you can safely stop at any time
+- Large downloads may take time - the timeout is set to 5 minutes per file
+- All downloads are verified before marking as complete
+
+## License
+
+MIT
+
+## Disclaimer
+
+This tool is for educational purposes. Please respect the website's terms of service and robots.txt. Use responsibly and consider the server load.
