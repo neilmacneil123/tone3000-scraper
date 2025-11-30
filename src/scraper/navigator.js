@@ -77,27 +77,44 @@ class Navigator {
       // Create worker function
       const scanPage = async (pageNum, workerPage) => {
         try {
+          // Construct URL with page parameter
+          const baseUrl = this.config.baseUrl.split('?')[0];
           const pageUrl = pageNum === 1
-            ? this.config.baseUrl
-            : `${this.config.baseUrl}?page=${pageNum}`;
+            ? baseUrl
+            : `${baseUrl}?page=${pageNum}`;
           
-          await workerPage.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-          await this.rateLimiter.waitCustom(this.config.delays.betweenPages);
+          this.logger.debug(`[Worker] Navigating to: ${pageUrl}`);
+          await workerPage.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
           
-          const pageUrls = await workerPage.$$eval(
-            'a[href*="/tones/"]',
-            anchors => {
-              const urlSet = new Set();
+          // Wait a bit for content to load
+          await this.rateLimiter.waitCustom(2000);
+          
+          // Try to find items with multiple selectors
+          const pageUrls = await workerPage.evaluate(() => {
+            const selectors = [
+              'a[href*="/tones/"]',
+              'a[href*="/tone/"]',
+              'a[class*="tone"]',
+              'a[class*="item"]'
+            ];
+            
+            const urlSet = new Set();
+            
+            for (const selector of selectors) {
+              const anchors = document.querySelectorAll(selector);
               anchors.forEach(a => {
                 const href = a.getAttribute('href');
-                if (href && href.includes('/tones/')) {
+                if (href && (href.includes('/tones/') || href.includes('/tone/'))) {
                   const url = href.startsWith('http') ? href : `https://www.tone3000.com${href}`;
                   urlSet.add(url);
                 }
               });
-              return Array.from(urlSet);
+              
+              if (urlSet.size > 0) break; // Found items, stop trying selectors
             }
-          );
+            
+            return Array.from(urlSet);
+          });
           
           pagesScanned++;
           if (pagesScanned % 10 === 0 || pagesScanned === totalPages) {

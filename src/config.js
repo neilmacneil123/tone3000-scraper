@@ -32,7 +32,7 @@ export default {
   
   // Logging settings
   logDir: './logs',
-  logLevel: 'info',          // 'debug', 'info', 'warn', 'error'
+  logLevel: 'debug',         // 'debug', 'info', 'warn', 'error'
   
   // Download timeout
   downloadTimeout: 300000,   // 5 minutes for large files
