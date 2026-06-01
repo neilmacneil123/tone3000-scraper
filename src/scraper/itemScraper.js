@@ -17,6 +17,56 @@ class ItemScraper {
       .trim();
   }
 
+  normalizeLabel(text = '') {
+    return text
+      .toLowerCase()
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  classifyItem(itemName, itemUrl = '') {
+    const normalized = this.normalizeLabel(`${itemName} ${itemUrl}`);
+
+    if (/\bir\b|impulse\s*response/.test(normalized)) {
+      return 'IRs';
+    }
+
+    if (/\bnam\b|neural\s*amp\s*model/.test(normalized)) {
+      return 'NAMs';
+    }
+
+    if (/\bcab\b|cabinet/.test(normalized)) {
+      return 'Cabs';
+    }
+
+    if (/\bpreset\b|profile/.test(normalized)) {
+      return 'Presets';
+    }
+
+    return 'Uncategorized';
+  }
+
+  buildCategoryCleanItemName(rawItemName, itemCategory) {
+    const tokensToStrip = {
+      IRs: ['impulse response', 'impulse', 'response', ' ir ', 'irs'],
+      NAMs: ['neural amp model', 'neural', 'amp', 'model', ' nam ', 'nams'],
+      Cabs: ['cabinet', 'cab', 'cabs'],
+      Presets: ['preset', 'presets', 'profile', 'profiles']
+    };
+
+    let cleaned = ` ${this.normalizeLabel(rawItemName)} `;
+    const replacements = tokensToStrip[itemCategory] || [];
+
+    for (const token of replacements) {
+      const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\ /g, '\\s+');
+      cleaned = cleaned.replace(new RegExp(escaped, 'gi'), ' ');
+    }
+
+    const sanitized = this.sanitizeFileName(cleaned.replace(/\s+/g, ' ').trim());
+    return sanitized || this.sanitizeFileName(rawItemName) || 'unknown-item';
+  }
+
   async extractItemName() {
     try {
       // Try to get the item title from the page
@@ -31,7 +81,7 @@ class ItemScraper {
         if (element) {
           const text = await this.page.evaluate(el => el.textContent, element);
           if (text && text.trim()) {
-            return this.sanitizeFileName(text.trim());
+            return text.trim();
           }
         }
       }
@@ -98,10 +148,10 @@ class ItemScraper {
     }
   }
 
-  async setupDownloadTracking(itemName) {
+  async setupDownloadTracking(itemName, itemCategory) {
     try {
       // Create download directory for this item
-      const downloadPath = path.join(this.config.downloadDir, itemName);
+      const downloadPath = path.join(this.config.downloadDir, itemCategory, itemName);
       
       // Set up download behavior
       const client = await this.page.target().createCDPSession();
@@ -159,11 +209,15 @@ class ItemScraper {
       });
 
       // Extract item name
-      const itemName = await this.extractItemName();
+      const rawItemName = await this.extractItemName();
+      const itemCategory = this.classifyItem(rawItemName, itemUrl);
+      const itemName = this.buildCategoryCleanItemName(rawItemName, itemCategory);
       this.logger.debug(`Item name: ${itemName}`);
+      this.logger.debug(`Raw item name: ${rawItemName}`);
+      this.logger.debug(`Item category: ${itemCategory}`);
 
       // Setup download directory
-      const downloadPath = await this.setupDownloadTracking(itemName);
+      const downloadPath = await this.setupDownloadTracking(itemName, itemCategory);
       this.logger.debug(`Download path: ${downloadPath}`);
 
       // Find download button
@@ -186,7 +240,8 @@ class ItemScraper {
       
       return { 
         success: true, 
-        itemName, 
+        itemName,
+        itemCategory,
         fileName,
         downloadPath 
       };
