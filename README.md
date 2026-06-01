@@ -34,14 +34,13 @@ sudo apt-get update && sudo apt-get install -y \
 npm start
 ```
 
-Downloads will be saved to the `downloads/` folder, organized by item name.
+Downloads will be saved to the `downloads/` folder, organized by category (IRs, NAMs, Cabs, Presets, Uncategorized) and then item name.
 
 ## Configuration
 
 Edit `src/config.js` to change settings:
 
 - `concurrency` - Number of simultaneous downloads (default: 5)
-- `totalPages` - Total pages to scan (default: 219)
 - `downloadDir` - Where files get saved
 - `headless` - Set to `false` to watch the browser
 
